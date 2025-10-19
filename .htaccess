@@ -1,0 +1,23 @@
+Options -Indexes
+Options +FollowSymLinks
+RewriteEngine On
+RewriteBase /combinedp/kerala-spices-ecommerce/
+
+# Allow direct access to files
+RewriteCond %{REQUEST_FILENAME} !-f
+RewriteCond %{REQUEST_FILENAME} !-d
+RewriteRule ^(.*)$ src/$1 [L]
+
+# PHP Settings
+php_flag display_errors on
+php_value error_reporting E_ALL
+
+# Default charset
+AddDefaultCharset UTF-8
+
+# Handle file permissions
+# <FilesMatch "\.(php|html|css|js|jpg|jpeg|png|gif)$">
+#     Order Allow,Deny
+#     Allow from all
+#     Require all granted
+# </FilesMatch>

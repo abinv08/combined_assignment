@@ -73,9 +73,13 @@ class Product {
 
     public function getFeaturedProducts($limit = 6) {
         try {
-            $query = "SELECT * FROM products ORDER BY created_at DESC LIMIT :limit";
+            $limit = (int)$limit;
+            if ($limit <= 0) {
+                $limit = 6;
+            }
+            // MySQL/MariaDB do not support binding LIMIT properly when emulation is disabled
+            $query = "SELECT * FROM products ORDER BY created_at DESC LIMIT $limit";
             $stmt = $this->db->prepare($query);
-            $stmt->bindParam(':limit', $limit, PDO::PARAM_INT);
             $stmt->execute();
             return $stmt->fetchAll(PDO::FETCH_ASSOC);
         } catch(PDOException $e) {

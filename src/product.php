@@ -6,13 +6,16 @@ require_once 'classes/Cart.php';
 
 $db = new Database();
 $conn = $db->connect();
+if ($conn === null) {
+    die('Database connection failed.');
+}
 $product = new Product($conn);
 $cart = new Cart($conn);
 
 $message = '';
 
 if (isset($_GET['id'])) {
-    $productId = $_GET['id'];
+    $productId = (int)$_GET['id'];
     $productDetails = $product->getProductDetails($productId);
     
     if (!$productDetails) {
@@ -27,7 +30,7 @@ if (isset($_GET['id'])) {
 // Handle add to cart
 if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['add_to_cart'])) {
     if (isset($_SESSION['user_id'])) {
-        $userId = $_SESSION['user_id'];
+        $userId = (int)$_SESSION['user_id'];
         $quantity = isset($_POST['quantity']) ? (int)$_POST['quantity'] : 1;
         
         // Debug: Check if user is logged in and product exists
@@ -80,8 +83,11 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['add_to_cart'])) {
                 <?php if (isset($_SESSION['user_id'])): ?>
                     <form method="POST" action="">
                         <div class="form-group">
-                            <label for="quantity">Quantity:</label>
-                            <input type="number" id="quantity" name="quantity" value="1" min="1" max="10" class="form-control" style="width: 100px;">
+                            <label for="quantity">Quantity (kg):</label>
+                            <div style="display:flex;align-items:center;gap:8px;">
+                                <input type="number" id="quantity" name="quantity" value="1" min="1" max="10" class="form-control" style="width: 100px;">
+                                <span>kg</span>
+                            </div>
                         </div>
                         <button type="submit" name="add_to_cart" class="btn">Add to Cart</button>
                         <a href="cart.php" class="btn btn-secondary">View Cart</a>

@@ -24,34 +24,79 @@ if (empty($cartItems)) {
 }
 
 $message = '';
+$razorpayOrder = null;
+$selectedPaymentMethod = null;
+$shippingAddressInput = '';
 
 // Handle payment processing
 if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['process_payment'])) {
-    $paymentMethod = $_POST['payment_method'];
-    $shippingAddress = $_POST['shipping_address'];
-    
-    try {
-        // Create order
-        $orderId = $order->createOrder($userId, $cartItems, $cartTotal);
-        
-        if ($orderId) {
-            // Update order with payment and shipping info
-            $updateQuery = "UPDATE orders SET status = 'processing', payment_method = :payment_method, shipping_address = :shipping_address WHERE id = :order_id";
-            $stmt = $conn->prepare($updateQuery);
-            $stmt->bindParam(':payment_method', $paymentMethod);
-            $stmt->bindParam(':shipping_address', $shippingAddress);
-            $stmt->bindParam(':order_id', $orderId);
-            $stmt->execute();
-            
-            // Clear cart
-            $cart->clearCart($userId);
-            
-            $message = "Order placed successfully! Order ID: #" . $orderId;
+    $selectedPaymentMethod = $_POST['payment_method'] ?? '';
+    $shippingAddressInput = $_POST['shipping_address'] ?? '';
+
+    if (in_array($selectedPaymentMethod, ['card', 'upi', 'netbanking'], true)) {
+        // Prepare Razorpay order
+        // Replace these with your actual Razorpay keys
+        $RAZORPAY_KEY_ID = 'rzp_test_RVet1deigiEQNj'; // Put your key here
+        $RAZORPAY_KEY_SECRET = 'Fl10MO1c24Vckxi5TnMXO5hV'; // Put your secret here
+
+        if (empty($RAZORPAY_KEY_ID) || empty($RAZORPAY_KEY_SECRET)) {
+            $message = 'Online payments not configured. Set RAZORPAY_KEY_ID and RAZORPAY_KEY_SECRET.';
         } else {
-            $message = "Failed to create order. Please try again.";
+            $amountPaise = (int) round($cartTotal * 100);
+            $payload = [
+                'amount' => $amountPaise,
+                'currency' => 'INR',
+                'receipt' => 'rcpt_' . time(),
+                'payment_capture' => 1
+            ];
+
+            $ch = curl_init('https://api.razorpay.com/v1/orders');
+            curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+            curl_setopt($ch, CURLOPT_POST, true);
+            curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($payload));
+            curl_setopt($ch, CURLOPT_HTTPHEADER, [
+                'Content-Type: application/json'
+            ]);
+            curl_setopt($ch, CURLOPT_USERPWD, $RAZORPAY_KEY_ID . ':' . $RAZORPAY_KEY_SECRET);
+
+            $response = curl_exec($ch);
+            $httpCode = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
+            $curlErr = curl_error($ch);
+            curl_close($ch);
+
+            if ($curlErr) {
+                $message = 'Payment gateway error: ' . $curlErr;
+            } else {
+                $data = json_decode($response, true);
+                if ($httpCode >= 200 && $httpCode < 300 && isset($data['id'])) {
+                    $razorpayOrder = $data;
+                } else {
+                    $message = 'Failed to initialize payment. Please try again.';
+                }
+            }
         }
-    } catch (Exception $e) {
-        $message = "Error processing payment: " . $e->getMessage();
+    } else if ($selectedPaymentMethod === 'cod') {
+        try {
+            // Create order with payment and shipping info for COD
+            $orderId = $order->createOrder($userId, $cartItems, $cartTotal, $selectedPaymentMethod, $shippingAddressInput);
+
+            if ($orderId) {
+                // Update order status
+                $updateQuery = "UPDATE orders SET status = 'processing' WHERE id = :order_id";
+                $stmt = $conn->prepare($updateQuery);
+                $stmt->bindParam(':order_id', $orderId);
+                $stmt->execute();
+
+                // Clear cart
+                $cart->clearCart($userId);
+
+                $message = "Order placed successfully! Order ID: #" . $orderId;
+            } else {
+                $message = "Failed to create order. Please try again.";
+            }
+        } catch (Exception $e) {
+            $message = "Error processing payment: " . $e->getMessage();
+        }
     }
 }
 ?>
@@ -70,7 +115,9 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['process_payment'])) {
     <div class="container">
         <h1>Payment & Checkout</h1>
         
-        <?php if ($message): ?>
+        <?php if ($message || isset($_SESSION['payment_error']) || isset($_SESSION['payment_success'])): ?>
+            <?php if (isset($_SESSION['payment_error'])) { $message = $_SESSION['payment_error']; unset($_SESSION['payment_error']); }
+                  if (isset($_SESSION['payment_success'])) { $message = $_SESSION['payment_success']; unset($_SESSION['payment_success']); } ?>
             <div class="message"><?php echo htmlspecialchars($message); ?></div>
             <?php if (strpos($message, 'successfully') !== false): ?>
                 <div class="success-actions">
@@ -78,7 +125,8 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['process_payment'])) {
                     <a href="products.php" class="btn btn-secondary">Continue Shopping</a>
                 </div>
             <?php endif; ?>
-        <?php else: ?>
+        <?php endif; ?>
+        <?php if (!$message): ?>
             <div class="checkout-container">
                 <div class="order-summary">
                     <h2>Order Summary</h2>
@@ -103,16 +151,16 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['process_payment'])) {
                             <label for="payment_method">Payment Method:</label>
                             <select id="payment_method" name="payment_method" class="form-control" required>
                                 <option value="">Select Payment Method</option>
-                                <option value="cod">Cash on Delivery</option>
-                                <option value="card">Credit/Debit Card</option>
-                                <option value="upi">UPI Payment</option>
-                                <option value="netbanking">Net Banking</option>
+                                <option value="cod" <?php echo $selectedPaymentMethod==='cod'?'selected':''; ?>>Cash on Delivery</option>
+                                <option value="card" <?php echo $selectedPaymentMethod==='card'?'selected':''; ?>>Credit/Debit Card</option>
+                                <option value="upi" <?php echo $selectedPaymentMethod==='upi'?'selected':''; ?>>UPI Payment</option>
+                                <option value="netbanking" <?php echo $selectedPaymentMethod==='netbanking'?'selected':''; ?>>Net Banking</option>
                             </select>
                         </div>
                         
                         <div class="form-group">
                             <label for="shipping_address">Shipping Address:</label>
-                            <textarea id="shipping_address" name="shipping_address" class="form-control" rows="4" required placeholder="Enter your complete shipping address"></textarea>
+                            <textarea id="shipping_address" name="shipping_address" class="form-control" rows="4" required placeholder="Enter your complete shipping address"><?php echo htmlspecialchars($shippingAddressInput); ?></textarea>
                         </div>
                         
                         <div class="payment-actions">
@@ -126,5 +174,46 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['process_payment'])) {
     </div>
 
     <?php include 'includes/footer.php'; ?>
+
+    <?php if ($razorpayOrder): ?>
+    <script src="https://checkout.razorpay.com/v1/checkout.js"></script>
+    <script>
+    (function(){
+        var options = {
+            key: '<?php echo htmlspecialchars($RAZORPAY_KEY_ID); ?>',
+            amount: <?php echo (int) round($cartTotal * 100); ?>,
+            currency: 'INR',
+            name: 'Kerala Spices',
+            description: 'Order Payment',
+            order_id: '<?php echo htmlspecialchars($razorpayOrder['id']); ?>',
+            handler: function (response){
+                // Post to server for verification and order creation
+                var form = document.createElement('form');
+                form.method = 'POST';
+                form.action = 'payment_verify.php';
+                var fields = {
+                    razorpay_payment_id: response.razorpay_payment_id,
+                    razorpay_order_id: response.razorpay_order_id,
+                    razorpay_signature: response.razorpay_signature,
+                    shipping_address: '<?php echo htmlspecialchars($shippingAddressInput, ENT_QUOTES); ?>',
+                    payment_method: '<?php echo htmlspecialchars($selectedPaymentMethod ?: 'card', ENT_QUOTES); ?>'
+                };
+                Object.keys(fields).forEach(function(k){
+                    var input = document.createElement('input');
+                    input.type = 'hidden';
+                    input.name = k;
+                    input.value = fields[k];
+                    form.appendChild(input);
+                });
+                document.body.appendChild(form);
+                form.submit();
+            },
+            theme: { color: '#0b8457' }
+        };
+        var rzp = new Razorpay(options);
+        rzp.open();
+    })();
+    </script>
+    <?php endif; ?>
 </body>
 </html>

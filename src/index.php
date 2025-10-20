@@ -36,7 +36,11 @@ $featuredProducts = $product->getFeaturedProducts(6);
                     <?php foreach ($featuredProducts as $product): ?>
                         <div class="product-card">
                             <div class="product-image">
-                                🌶️
+                                <?php if (!empty($product['image'])): ?>
+                                    <img src="public/images/<?php echo htmlspecialchars($product['image']); ?>" alt="<?php echo htmlspecialchars($product['name']); ?>" style="width:100%;height:100%;object-fit:cover;border-radius:12px;" />
+                                <?php else: ?>
+                                    🌶️
+                                <?php endif; ?>
                             </div>
                             <div class="product-info">
                                 <h3><?php echo htmlspecialchars($product['name']); ?></h3>

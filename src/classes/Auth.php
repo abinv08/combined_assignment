@@ -48,6 +48,10 @@ class Auth {
         session_destroy();
     }
 
+    public function isLoggedIn() {
+        return isset($_SESSION['user_id']) && !empty($_SESSION['user_id']);
+    }
+
     public function isAdmin() {
         if (isset($_SESSION['user_role']) && $_SESSION['user_role'] === 'admin') {
             return true;

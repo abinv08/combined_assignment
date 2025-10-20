@@ -1,18 +1,10 @@
 <?php
 session_start();
-if (isset($_SESSION['user_id'])) {
-    // Unset all of the session variables
-    $_SESSION = array();
+// Unset and destroy session regardless
+$_SESSION = array();
+session_destroy();
 
-    // Destroy the session
-    session_destroy();
-
-    // Redirect to the login page
-    header("Location: login.php");
-    exit;
-} else {
-    // If no session exists, redirect to the login page
-    header("Location: login.php");
-    exit;
-}
+// Redirect to homepage where header shows only Login
+header("Location: index.php");
+exit;
 ?>
